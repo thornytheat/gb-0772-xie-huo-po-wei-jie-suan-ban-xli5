@@ -3,21 +3,34 @@ from time import perf_counter
 
 from app.archive.canonical import digest
 from app.clearing import Clearing
+from app.problems import DocketError
 from app.setup import POLICY
 from app.source.packet import decode,fingerprint
 
 
 def run(docket, payload):
     started=perf_counter()
-    original,source=decode(payload)
+    original,source,parent_key=decode(payload)
     hashes=fingerprint(original)
-    key=digest({'files':hashes,'policy':POLICY})
+    parent=docket.find(parent_key) if parent_key else None
+    if parent_key and parent is None:
+        raise DocketError('PARENT_BAD','找不到引用的原清算批次',404)
+    if parent is not None and parent['manifest'].get('rule')!=POLICY:
+        raise DocketError('PARENT_BAD','原批次规则版本与当前不一致',409)
+    key=digest({'files':hashes,'policy':POLICY} | ({'parent':parent_key} if parent_key else {}))
     existing=docket.find(key)
     if existing:
         return existing,True
-    clearing=Clearing(original,docket.secret)
+    clearing=Clearing(original,docket.secret,parent)
     report=clearing.report()
     manifest={'key':key,'source':source,'rule':POLICY,'inputs':hashes,'evidence_sha256':digest(report),
               'survey':vars(clearing.survey),'created_utc':datetime.now(UTC).isoformat(timespec='seconds'),
               'elapsed_ms':round((perf_counter()-started)*1000)}
+    if parent_key:
+        account=report['settlement']
+        manifest['parent']=parent_key
+        manifest['reclaimed']=[{'receipt':row['receipt'],'parent_stay':row['parent_stay'],
+                                'new_stay':row['new_stay'],'cents':row['cents']} for row in account['reclaimed']]
+        manifest['disputed']=[{'receipt':row['fields']['receipt'],'reason':row['reason']}
+                              for row in account['orphans']]
     return docket.publish(key,{'manifest':manifest,'evidence':report})

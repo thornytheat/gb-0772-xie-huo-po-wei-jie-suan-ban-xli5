@@ -11,10 +11,14 @@ api=APIRouter(prefix='/api')
 
 
 @api.get('/cases/{sample}/{stage}')
-def preview(request:Request,sample:str,stage:str):
+def preview(request:Request,sample:str,stage:str,parent:str|None=None):
     if stage not in STAGES:
         raise DocketError('STAGE_BAD','没有这项清算工序',404)
-    data=Clearing(bundle(sample),request.app.state.docket.secret)
+    docket=request.app.state.docket
+    base=docket.find(parent) if parent else None
+    if parent and base is None:
+        raise DocketError('PARENT_BAD','找不到引用的原清算批次',404)
+    data=Clearing(bundle(sample),docket.secret,base)
     return getattr(data,stage)
 
 

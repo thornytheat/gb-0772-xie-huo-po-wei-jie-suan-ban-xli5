@@ -1,10 +1,11 @@
 from collections import Counter
 
 from app.billing.payments import index
+from app.billing.reclaim import reconcile
 from app.curb.timeaxis import count
 
 
-def accounting(prices,payments,survey,coverage,disputes):
+def accounting(prices,payments,survey,coverage,disputes,parent=None):
     notes,isolated=index(payments,survey)
     lines=[]
     for stay in prices:
@@ -12,9 +13,14 @@ def accounting(prices,payments,survey,coverage,disputes):
         paid=sum(r['cents'] for r in matches)
         delta=paid-stay['due_cents']
         code='NO_PAYMENT' if not matches else 'MATCH' if delta==0 else 'GAP'
-        lines.append({'stay':stay['stay'],'berth':stay['berth'],'vehicle':stay['vehicle'],'arrival':stay['start'],
-                      'due_cents':stay['due_cents'],'paid_cents':paid,'difference_cents':delta,'code':code,'receipts':matches})
+        lines.append({'stay':stay['stay'],'berth':stay['berth'],'vehicle':stay['vehicle'],
+                      'arrival':stay['start'],
+                      'due_cents':stay['due_cents'],'paid_cents':paid,'difference_cents':delta,'code':code,
+                      'receipts':matches})
     orphans=[row | {'code':'ORPHAN'} for matches in notes.values() for row in matches]
+    reclaimed=[]
+    if parent is not None:
+        reclaimed,orphans=reconcile(lines,prices,parent,orphans)
     duration=count(survey.start,survey.end)
     categories=Counter()
     for row in prices:
@@ -31,4 +37,9 @@ def accounting(prices,payments,survey,coverage,disputes):
     totals={key:sum(r[key] for r in balance) for key in ('scheduled','vacant','disputed','free','base','upgrade')}
     money={key:sum(r[key] for r in lines) for key in ('due_cents','paid_cents','difference_cents')}
     money['orphan_cents']=sum(row['cents'] for row in orphans)
-    return {'lines':lines,'isolated':isolated,'orphans':orphans,'berths':balance,'totals':totals,'money':money}
+    result={'lines':lines,'isolated':isolated,'orphans':orphans,'berths':balance,'totals':totals,'money':money}
+    if parent is not None:
+        money['reclaimed_cents']=sum(row['cents'] for row in reclaimed)
+        result['reclaimed']=reclaimed
+        result['parent']=(parent.get('manifest') or {}).get('key')
+    return result

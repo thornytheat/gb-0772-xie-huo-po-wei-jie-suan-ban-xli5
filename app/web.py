@@ -27,7 +27,7 @@ def yuan(cents):
 
 @workbench.get('/',response_class=HTMLResponse)
 @workbench.get('/clearing/{screen}',response_class=HTMLResponse)
-def screen(request:Request,screen:str='overview',sample:str='dirty',key:str|None=None):
+def screen(request:Request,screen:str='overview',sample:str='dirty',key:str|None=None,parent:str|None=None):
     if screen!='overview' and screen not in STEPS:
         raise DocketError('STAGE_BAD','没有这项清算工序',404)
     docket=request.app.state.docket
@@ -37,16 +37,21 @@ def screen(request:Request,screen:str='overview',sample:str='dirty',key:str|None
         report,meta=record['evidence'],record['manifest']
         if meta['source'] in {'clean','dirty'}:
             sample=meta['source']
+        parent=meta.get('parent')
         if screen=='appeal':
             signed=issue(record)
     else:
-        clearing=Clearing(bundle(sample),docket.secret)
+        base=docket.find(parent) if parent else None
+        if parent and base is None:
+            raise DocketError('PARENT_BAD','找不到引用的原清算批次',404)
+        clearing=Clearing(bundle(sample),docket.secret,base)
         report=jsonable_encoder(clearing.report())
         meta={'rule':POLICY,'survey':jsonable_encoder(vars(clearing.survey))}
     stages=list(STEPS)
     index=stages.index(screen) if screen in stages else -1
     history=docket.manifests() if screen=='history' else []
-    path=lambda page: str(request.url_for('screen',screen=page).include_query_params(sample=sample,**({'key':key} if key else {})))
+    path=lambda page: str(request.url_for('screen',screen=page).include_query_params(
+        sample=sample,**({'key':key} if key else {}),**({'parent':parent} if parent and not key else {})))
     return views.get_template('desk.html').render(screen=screen,steps=STEPS,index=index,next_step=stages[index+1] if index<6 else None,
         previous=stages[index-1] if index>0 else None,path=path,key=key,sample=sample,report=report,meta=meta,
         history=history,signed=signed,label=LABEL,local=local,yuan=yuan)

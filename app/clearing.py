@@ -13,9 +13,10 @@ STAGES=('intake','identity','occupancy','pricing','settlement')
 
 
 class Clearing:
-    def __init__(self, files, secret):
+    def __init__(self, files, secret, parent=None):
         self.survey,self.sheets=load(files)
         self.secret=secret
+        self.parent=parent
 
     @cached_property
     def anonymous(self):
@@ -64,7 +65,7 @@ class Clearing:
 
     @cached_property
     def settlement(self):
-        return accounting(self.pricing['stays'],self.anonymous['payments'][0],self.survey,*self.coverage)
+        return accounting(self.pricing['stays'],self.anonymous['payments'][0],self.survey,*self.coverage,parent=self.parent)
 
     def report(self):
         return {stage:getattr(self,stage) for stage in STAGES}

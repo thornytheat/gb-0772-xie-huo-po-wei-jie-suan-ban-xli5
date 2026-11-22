@@ -7,6 +7,7 @@ from app.source.csvscan import scan
 from app.source.structure import SCHEMAS,Survey
 
 NAMES=('survey',*SCHEMAS)
+PARENT_KEY='parent'
 
 
 def bundle(name):
@@ -16,11 +17,24 @@ def bundle(name):
             for key in NAMES}
 
 
+def _parent(payload):
+    if PARENT_KEY not in payload:
+        return None
+    value=payload[PARENT_KEY]
+    if not isinstance(value,str) or not value.strip() or len(value)>128:
+        raise DocketError('PARENT_BAD','补扫重算需引用一个有效的原清算批次',422)
+    return value.strip()
+
+
 def decode(payload):
-    if isinstance(payload,dict) and set(payload)=={'sample'}:
-        name=str(payload['sample'])
-        return bundle(name),name
-    files=payload.get('bundle') if isinstance(payload,dict) and set(payload)=={'bundle'} else None
+    if not isinstance(payload,dict):
+        raise DocketError('BUNDLE_BAD','需清算窗口和三份 UTF-8 单据')
+    parent=_parent(payload)
+    rest={key:value for key,value in payload.items() if key!=PARENT_KEY}
+    if set(rest)=={'sample'}:
+        name=str(rest['sample'])
+        return bundle(name),name,parent
+    files=rest.get('bundle') if set(rest)=={'bundle'} else None
     if not isinstance(files,dict) or set(files)!=set(NAMES) or any(
         not isinstance(text,str) or len(text)>200_000 for text in files.values()
     ):
@@ -30,7 +44,7 @@ def decode(payload):
             text.encode()
     except UnicodeEncodeError:
         raise DocketError('BUNDLE_BAD','原件含错误字符') from None
-    return files,'upload'
+    return files,'upload',parent
 
 
 def load(files):

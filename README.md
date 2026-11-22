@@ -25,7 +25,18 @@ python -m pytest -q
 3. 「逐单与泊位对账」查看应收 ¥22.40、关联实收 ¥23.10、净差 ¥0.70，以及单列的游离回执 ¥1.40。
 4. 点击「运行清算」生成留档，重复运行复用同一编号。进入「理赔证据签发」下载去车牌化的逐单证据。
 
-独立预览为 `GET /api/cases/{dirty|clean}/{stage}`，阶段名见深度登记。自有样例可以 `POST /api/dockets`，`bundle` 对象需包含 `survey`、`sensors`、`bookings`、`payments` 四份 UTF-8 字符串，内置数据可用 `{"sample":"dirty"}`。历史 `GET /api/dockets`，归档 `GET /api/dockets/{key}`，理赔附件 `GET /api/export/{key}`。
+## 补扫重算
+
+杆侧补扫把到达分钟提前后，原批次挂上的回执会变成游离款。提交补扫时引用原留档编号：
+
+```sh
+curl -s localhost:18471/api/dockets -H 'Content-Type: application/json' \
+  -d '{"bundle": {...四份原件...}, "parent": "<原留档编号>"}'
+```
+
+逐单页的「补扫认回」列出能认回的回执及归属依据，「仍有争议的款」列出不能认回的回执及原因。同一补扫重跑复用同一编号，不重复计收或留档。详见[理赔复核步骤](docs/APPEAL.md)。
+
+独立预览为 `GET /api/cases/{dirty|clean}/{stage}`，阶段名见深度登记；带 `parent=<原留档编号>` 可按补扫口径预览。自有样例可以 `POST /api/dockets`，`bundle` 对象需包含 `survey`、`sensors`、`bookings`、`payments` 四份 UTF-8 字符串，内置数据可用 `{"sample":"dirty"}`，补扫另加 `parent`。历史 `GET /api/dockets`，归档 `GET /api/dockets/{key}`，理赔附件 `GET /api/export/{key}`。
 
 - [字段、计费与边界](docs/DATA-DICTIONARY.md)
 - [模块和陷阱](docs/DEPTH.md)
